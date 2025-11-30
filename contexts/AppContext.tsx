@@ -136,6 +136,28 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'DELETE_UNIT':
         return { ...state, units: state.units.filter(u => u.id !== action.payload.unitId) };
+    case 'EDIT_WORD': {
+        const { unitId, roundId, wordId, updatedWord } = action.payload;
+        return {
+            ...state,
+            units: state.units.map(unit => {
+                if (unit.id !== unitId) return unit;
+                return {
+                    ...unit,
+                    rounds: unit.rounds.map(round => {
+                        if (round.id !== roundId) return round;
+                        return {
+                            ...round,
+                            words: round.words.map(word => {
+                                if (word.id !== wordId) return word;
+                                return { ...word, ...updatedWord };
+                            })
+                        };
+                    })
+                };
+            })
+        };
+    }
     case 'EDIT_WORD_BY_PAYLOAD': {
         const updatedWord = action.payload;
         return {
