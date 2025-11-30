@@ -231,7 +231,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const isFetchingRef = React.useRef(false);
+  // Using a ref to track the current user ID prevents re-fetching data on token refreshes.
+  const processedUserIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (areSupabaseKeysMissing) {
@@ -242,72 +243,68 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
     }
 
+    const fetchAllData = async (sessionUser: any) => {
+      try {
+        const { data: userProfile, error: profileError } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
+        if (profileError || !userProfile) throw profileError || new Error('Profile not found.');
+        
+        dispatch({ type: 'LOGIN', payload: userProfile as User });
+
+        const [
+          usersRes, unitsRes, progressRes, testsRes, groupsRes, messagesRes
+        ] = await Promise.all([
+            supabase.from('profiles').select('*'),
+            supabase.from('units').select('*, rounds(*, words(*))').order('unit_number', { ascending: true }),
+            supabase.from('round_progress').select('*'),
+            supabase.from('unit_tests').select('*'),
+            supabase.from('chat_groups').select('*'),
+            supabase.from('chat_messages').select('*'),
+        ]);
+
+        const errors = [usersRes.error, unitsRes.error, progressRes.error, testsRes.error, groupsRes.error, messagesRes.error].filter(Boolean);
+        if (errors.length > 0) throw new Error(errors.map(e => e?.message).join(', '));
+        
+        dispatch({
+            type: 'SET_INITIAL_DATA', payload: {
+                users: usersRes.data as User[] || [],
+                units: unitsRes.data as Unit[] || [],
+                chatGroups: groupsRes.data as ChatGroup[] || [],
+                chatMessages: messagesRes.data as ChatMessage[] || [],
+                studentProgress: progressRes.data as RoundProgress[] || [],
+                unitTests: testsRes.data as UnitTest[] || []
+            }
+        });
+      } catch (error: any) {
+        console.error("Critical session/data fetch error:", error);
+        await supabase.auth.signOut();
+        let errorMessage = `A session error occurred: ${error.message}. Please log in again.`;
+        if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.message.includes('JWT'))) {
+             errorMessage = `Supabase setup error: ${error.message}. Please check your setup and RLS policies.`;
+        }
+        dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      }
+    };
+
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'INITIAL_SESSION' && !session) {
+        const user = session?.user;
+
+        if (event === 'SIGNED_OUT') {
+            processedUserIdRef.current = null;
             dispatch({ type: 'SET_LOGGED_OUT' });
             return;
         }
-
-        if (event === 'INITIAL_SESSION' && session) {
-            if (isFetchingRef.current) return;
-            isFetchingRef.current = true;
-            
-            try {
-                const { data: userProfile, error: profileError } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-                if (profileError || !userProfile) throw profileError || new Error('Profile not found.');
-                
-                dispatch({ type: 'LOGIN', payload: userProfile as User });
-                await fetchInitialData();
-            } catch (error: any) {
-                console.error("Critical session error:", error);
-                await supabase.auth.signOut();
-                dispatch({ type: 'SET_ERROR', payload: `A session error occurred: ${error.message}. Please log in again.` });
-            } finally {
-                isFetchingRef.current = false;
-            }
-        } else if (event === 'SIGNED_IN') {
-             window.location.reload();
-        } else if (event === 'SIGNED_OUT') {
-            dispatch({ type: 'SET_LOGGED_OUT' });
+        
+        // This block handles INITIAL_SESSION and SIGNED_IN for a new user.
+        // It avoids re-running for subsequent TOKEN_REFRESHED events for the same user.
+        if (user && user.id !== processedUserIdRef.current) {
+            processedUserIdRef.current = user.id;
+            dispatch({ type: 'SET_LOADING', payload: true });
+            await fetchAllData(user);
+        } else if (!user && processedUserIdRef.current === null) {
+            // This handles the initial state where there is no session.
+            dispatch({ type: 'SET_LOADING', payload: false });
         }
     });
-
-    const fetchInitialData = async () => {
-        try {
-            dispatch({ type: 'SET_LOADING', payload: true });
-            const [
-              usersRes, unitsRes, progressRes, testsRes, groupsRes, messagesRes
-            ] = await Promise.all([
-                supabase.from('profiles').select('*'),
-                supabase.from('units').select('*, rounds(*, words(*))').order('unit_number', { ascending: true }),
-                supabase.from('round_progress').select('*'),
-                supabase.from('unit_tests').select('*'),
-                supabase.from('chat_groups').select('*'),
-                supabase.from('chat_messages').select('*'),
-            ]);
-
-            const errors = [usersRes.error, unitsRes.error, progressRes.error, testsRes.error, groupsRes.error, messagesRes.error].filter(Boolean);
-            if (errors.length > 0) throw new Error(errors.map(e => e?.message).join(', '));
-            
-            dispatch({
-                type: 'SET_INITIAL_DATA', payload: {
-                    users: usersRes.data as User[] || [],
-                    units: unitsRes.data as Unit[] || [],
-                    chatGroups: groupsRes.data as ChatGroup[] || [],
-                    chatMessages: messagesRes.data as ChatMessage[] || [],
-                    studentProgress: progressRes.data as RoundProgress[] || [],
-                    unitTests: testsRes.data as UnitTest[] || []
-                }
-            });
-        } catch (error: any) {
-            console.error('Failed to fetch initial data:', error);
-            let errorMessage = 'Failed to load app data. Please check your connection.';
-            if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.message.includes('JWT'))) {
-                 errorMessage = `Supabase setup error: ${error.message}. Please check your setup and RLS policies.`;
-            }
-            dispatch({ type: 'SET_ERROR', payload: errorMessage });
-        }
-    };
     
     return () => {
         authSubscription?.unsubscribe();
