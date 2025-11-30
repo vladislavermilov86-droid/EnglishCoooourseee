@@ -42,28 +42,33 @@ const WordEditModal: React.FC<{
             let finalImageUrl = editedWord.image_url;
             
             if (imageFile) {
-                // FIX: Use Supabase storage client
+                // FIX: Use 'word_images' bucket for course content and Supabase storage client
                  const fileName = `${Date.now()}_${imageFile.name}`;
-                 const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, imageFile);
+                 const { error: uploadError } = await supabase.storage.from('word_images').upload(fileName, imageFile);
                  if (uploadError) throw uploadError;
                  
-                 const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+                 const { data } = supabase.storage.from('word_images').getPublicUrl(fileName);
                  
                  if (!data || !data.publicUrl) {
                      throw new Error("Could not get public URL for the uploaded image.");
                  }
                  finalImageUrl = data.publicUrl;
 
-                if (word.image_url && word.image_url.includes('supabase')) {
+                if (word.image_url && word.image_url.includes('supabase.co/storage/v1/object/public/')) {
                     try {
                         const url = new URL(word.image_url);
                         const pathParts = url.pathname.split('/');
-                        const oldFilePath = pathParts.slice(pathParts.indexOf('avatars') + 1).join('/');
-                        if (oldFilePath) {
-                             await supabase.storage.from('avatars').remove([oldFilePath]);
+                        // Path is like /storage/v1/object/public/BUCKET/FILE
+                        const publicIndex = pathParts.indexOf('public');
+                        if (publicIndex > -1 && pathParts.length > publicIndex + 2) {
+                            const oldBucket = pathParts[publicIndex + 1];
+                            const oldFilePath = pathParts.slice(publicIndex + 2).join('/');
+                            if (oldBucket && oldFilePath) {
+                                await supabase.storage.from(oldBucket).remove([oldFilePath]);
+                            }
                         }
                     } catch (err) {
-                        console.warn("Could not delete old image.", err);
+                        console.warn("Could not parse or delete old image.", err);
                     }
                 }
             }
