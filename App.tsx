@@ -1,66 +1,78 @@
-import React from 'react';
-import { AppProvider, useApp } from './contexts/AppContext';
+import * as React from 'react';
+import { useApp } from './contexts/AppContext';
 import LoginPage from './components/auth/LoginPage';
 import StudentView from './components/student/StudentView';
 import TeacherView from './components/teacher/TeacherView';
 import { UserRole } from './types';
 import SupabaseSetupGuide from './components/auth/SupabaseSetupGuide';
-import { areSupabaseKeysMissing } from './supabase';
-
-const LoadingSpinner = () => (
-    <div className="flex h-screen w-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-    </div>
-);
-
-const ErrorDisplay: React.FC<{ message: string, onReset: () => void }> = ({ message, onReset }) => (
-     <div className="min-h-screen flex items-center justify-center bg-red-50 dark:bg-gray-900 p-4">
-        <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-            <h1 className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">An Error Occurred</h1>
-            <pre className="bg-red-100 dark:bg-red-900/50 p-4 rounded-lg text-red-800 dark:text-red-200 whitespace-pre-wrap font-mono text-sm mb-6">{message}</pre>
-            <button
-                onClick={onReset}
-                className="w-full bg-red-500 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-600 transition"
-            >
-                Try Again
-            </button>
-        </div>
-    </div>
-);
-
-
-const AppContent: React.FC = () => {
-    const { state } = useApp();
-
-    if (areSupabaseKeysMissing) {
-        return <SupabaseSetupGuide />;
-    }
-
-    if (state.error) {
-        return <ErrorDisplay message={state.error} onReset={() => window.location.reload()} />;
-    }
-
-    if (state.isLoading) {
-        return <LoadingSpinner />;
-    }
-
-    if (!state.loggedInUser) {
-        return <LoginPage />;
-    }
-
-    if (state.loggedInUser.role.toLowerCase() === UserRole.Teacher) {
-        return <TeacherView />;
-    } else {
-        return <StudentView />;
-    }
-};
+import { supabase } from './supabase';
 
 const App: React.FC = () => {
+  const { state, dispatch } = useApp();
+  const { loggedInUser, isLoading, error } = state;
+  const [showSetupGuide, setShowSetupGuide] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+        if (isLoading) {
+            dispatch({ type: 'SET_ERROR', payload: 'Authentication timed out. Please check your connection and Supabase configuration.' });
+        }
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [isLoading, dispatch]);
+
+  if (showSetupGuide) {
+    return <SupabaseSetupGuide />;
+  }
+
+  if (isLoading) {
     return (
-        <AppProvider>
-            <AppContent />
-        </AppProvider>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+      </div>
     );
+  }
+
+  if (error) {
+     return (
+      <div className="flex items-center justify-center min-h-screen bg-red-50 text-red-700 p-4">
+        <div className="text-center max-w-md">
+            <h2 className="text-2xl font-bold mb-2">An Error Occurred</h2>
+            <p className="mb-6">{error}</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  supabase.auth.signOut();
+                  window.location.reload();
+                }}
+                className="w-full px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Back to Login
+              </button>
+              {(error.includes('Supabase') || error.includes('RLS') || error.includes('JWT') || error.includes('relation') || error.includes('check your setup')) && (
+                  <button
+                    onClick={() => setShowSetupGuide(true)}
+                    className="w-full px-6 py-2 bg-yellow-500 text-yellow-900 font-semibold rounded-lg hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                  >
+                    Show Setup Guide
+                  </button>
+              )}
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loggedInUser) {
+    return <LoginPage />;
+  }
+
+  return (
+    <div className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen">
+      {loggedInUser.role.toLowerCase() === UserRole.Student ? <StudentView /> : <TeacherView />}
+    </div>
+  );
 };
 
 export default App;

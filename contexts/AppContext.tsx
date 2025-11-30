@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
-import { AppState, Action, User, Unit, ChatGroup, ChatMessage, RoundProgress, UnitTest, StudentProgress, Word } from '../types';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useRef } from 'react';
+import { AppState, Action, User, Unit, ChatGroup, ChatMessage, RoundProgress, UnitTest, StudentProgress, UserRole, AttemptHistory, Word } from '../types';
 import { supabase, areSupabaseKeysMissing } from '../supabase';
 
 const AppContext = createContext<{
@@ -28,7 +28,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'LOGIN':
       return { ...state, loggedInUser: action.payload, isLoading: false, error: null };
     case 'SET_LOGGED_OUT':
-      return { ...initialState, isLoading: false, selectedLoginRole: state.selectedLoginRole };
+      return { ...initialState, isLoading: false };
     case 'SET_LOGIN_ROLE':
       return { ...state, selectedLoginRole: action.payload };
     case 'SET_INITIAL_DATA': {
@@ -50,7 +50,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
       return {
         ...state,
         ...action.payload,
-        units: action.payload.units.sort((a,b) => a.unit_number - b.unit_number),
         studentProgress: structuredProgress,
         unlockedUnits,
         isLoading: false,
@@ -69,7 +68,9 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ? { ...user, avatar_url: action.payload.newAvatarUrl }
             : user
         ),
-        // loggedInUser is now stable and gets its live updates via the useApp hook
+        loggedInUser: state.loggedInUser?.id === action.payload.userId
+          ? { ...state.loggedInUser, avatar_url: action.payload.newAvatarUrl }
+          : state.loggedInUser,
       };
     case 'UPSERT_MESSAGE': {
       const existing = state.chatMessages.find(m => m.id === action.payload.id);
@@ -107,7 +108,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
          }
          return { ...state, studentProgress: newStudentProgress };
     }
-    case 'RESET_STUDENT_UNIT_PROGRESS': {
+     case 'RESET_STUDENT_UNIT_PROGRESS': {
         const { studentId, unitId } = action.payload;
         const newStudentProgress = JSON.parse(JSON.stringify(state.studentProgress));
         if (newStudentProgress[studentId]?.unitsProgress[unitId]) {
@@ -116,21 +117,31 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, studentProgress: newStudentProgress };
     }
     case 'UPSERT_UNIT': {
-        const unit = action.payload;
+        const updatedUnitPartial = action.payload;
         let isNew = true;
-        const newUnits = state.units.map(u => {
-            if (u.id === unit.id) {
+
+        const newUnits = state.units.map(unit => {
+            if (unit.id === updatedUnitPartial.id) {
                 isNew = false;
-                return { ...u, ...unit };
+                // Merge, ensuring a new object is created and nested data is preserved.
+                return { ...unit, ...updatedUnitPartial };
             }
-            return u;
+            return unit;
         });
+
         if (isNew) {
-            newUnits.push(unit as Unit);
+            // It's a new unit from another client, add it.
+            // Note: Realtime inserts won't have nested relations.
+            newUnits.push(updatedUnitPartial as Unit);
         }
-        newUnits.sort((a,b) => a.unit_number - b.unit_number);
+
         const newUnlockedUnits = newUnits.filter(u => u.unlocked).map(u => u.id);
-        return { ...state, units: newUnits, unlockedUnits: newUnlockedUnits };
+
+        return {
+            ...state,
+            units: newUnits,
+            unlockedUnits: newUnlockedUnits,
+        };
     }
     case 'DELETE_UNIT':
         return { ...state, units: state.units.filter(u => u.id !== action.payload.unitId) };
@@ -139,38 +150,31 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return {
             ...state,
             units: state.units.map(unit => {
-                if (unit.id !== unitId) return unit;
-                return {
-                    ...unit,
-                    rounds: unit.rounds.map(round => {
-                        if (round.id !== roundId) return round;
-                        return {
-                            ...round,
-                            words: round.words.map(word => {
-                                if (word.id !== wordId) return word;
-                                return { ...word, ...updatedWord };
-                            })
-                        };
-                    })
-                };
+                if (unit.id === unitId) {
+                    return {
+                        ...unit,
+                        rounds: unit.rounds.map(round => {
+                            if (round.id === roundId) {
+                                return { ...round, words: round.words.map(word => word.id === wordId ? updatedWord : word) };
+                            }
+                            return round;
+                        })
+                    };
+                }
+                return unit;
             })
-        };
-    }
-    case 'EDIT_WORD_BY_PAYLOAD': {
-        const updatedWord = action.payload;
-        return {
-            ...state,
-            units: state.units.map(unit => ({
-                ...unit,
-                rounds: unit.rounds.map(round => ({
-                    ...round,
-                    words: round.words.map(word => word.id === updatedWord.id ? { ...word, ...updatedWord } : word)
-                }))
-            }))
         };
     }
     case 'UPSERT_UNIT_TEST': {
         const newTest = action.payload;
+        const tempTest = state.unitTests.find(t => t.unit_id === newTest.unit_id && t.id.startsWith('temp-'));
+        if (tempTest && !newTest.id.startsWith('temp-')) {
+          return {
+            ...state,
+            unitTests: [...state.unitTests.filter(t => t.id !== tempTest.id), newTest]
+          };
+        }
+      
         const existing = state.unitTests.find(t => t.id === newTest.id);
         return {
           ...state,
@@ -181,6 +185,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
       }
     case 'DELETE_TEST':
         return { ...state, unitTests: state.unitTests.filter(t => t.id !== action.payload.testId) };
+    case 'UNLOCK_UNIT':
+        return { ...state, unlockedUnits: [...new Set([...state.unlockedUnits, action.payload.unitId])] };
+    case 'LOCK_UNIT':
+        return { ...state, unlockedUnits: state.unlockedUnits.filter(id => id !== action.payload.unitId) };
     case 'UPSERT_CHAT_GROUP': {
         const group = action.payload;
         const existing = state.chatGroups.find(g => g.id === group.id);
@@ -193,28 +201,22 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, chatGroups: state.chatGroups.filter(g => g.id !== action.payload.chatGroupId) };
     case 'CLEAR_CHAT_HISTORY':
         return { ...state, chatMessages: state.chatMessages.filter(m => m.chat_group_id !== action.payload.chatGroupId) };
-    case 'UPSERT_USER_PROFILE': {
+    case 'UPSERT_USER_PROFILE':
         const user = action.payload;
         const existingUser = state.users.find(u => u.id === user.id);
-        const users = existingUser
-            ? state.users.map(u => u.id === user.id ? { ...u, ...user } : u)
-            : [...state.users, user];
+        const users = existingUser ? state.users.map(u => u.id === user.id ? user : u) : [...state.users, user];
         return {
-            ...state,
-            users,
-            // Do not update loggedInUser here to maintain a stable object reference, preventing subscription loops.
+          ...state,
+          users,
+          loggedInUser: state.loggedInUser?.id === user.id ? user : state.loggedInUser,
         };
-    }
     case 'SET_ONLINE_USERS':
       return { ...state, onlineUserIds: action.payload };
-    case 'USER_STATUS_CHANGE': {
-        const { userId, status, lastSeen } = action.payload;
-        const newUsers = state.users.map(u => (u.id === userId && lastSeen) ? { ...u, last_seen: lastSeen } : u);
-        let newOnlineUsers = [...state.onlineUserIds];
-        if (status === 'online' && !newOnlineUsers.includes(userId)) newOnlineUsers.push(userId);
-        if (status === 'offline') newOnlineUsers = newOnlineUsers.filter(id => id !== userId);
-        return { ...state, users: newUsers, onlineUserIds: newOnlineUsers };
-    }
+    case 'USER_JOINED':
+        if (state.onlineUserIds.includes(action.payload)) return state;
+        return { ...state, onlineUserIds: [...state.onlineUserIds, action.payload] };
+    case 'USER_LEFT':
+        return { ...state, onlineUserIds: state.onlineUserIds.filter(id => id !== action.payload) };
     case 'MESSAGES_READ': {
         const { messageIds, userId, readAt } = action.payload;
         return {
@@ -235,198 +237,290 @@ const appReducer = (state: AppState, action: Action): AppState => {
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  const fetchInitialData = useCallback(async (user: User) => {
-    try {
-        dispatch({ type: 'SET_LOADING', payload: true });
-        const [unitsRes, usersRes, groupsRes, messagesRes, progressRes, testsRes] = await Promise.all([
-            supabase.from('units').select('*, rounds(*, words(*))'),
-            supabase.from('profiles').select('*'),
-            supabase.from('chat_groups').select('*'),
-            supabase.from('chat_messages').select('*'),
-            supabase.from('round_progress').select('*'),
-            supabase.from('unit_tests').select('*'),
-        ]);
-
-        const errors = [unitsRes.error, usersRes.error, groupsRes.error, messagesRes.error, progressRes.error, testsRes.error].filter(Boolean);
-        if (errors.length > 0) throw new Error(errors.map(e => e?.message).join(', '));
-        
-        dispatch({
-            type: 'SET_INITIAL_DATA', payload: {
-                units: unitsRes.data as Unit[] || [],
-                users: usersRes.data as User[] || [],
-                chatGroups: groupsRes.data as ChatGroup[] || [],
-                chatMessages: messagesRes.data as ChatMessage[] || [],
-                studentProgress: progressRes.data as RoundProgress[] || [],
-                unitTests: testsRes.data as UnitTest[] || [],
-            }
-        });
-    } catch (error: any) {
-        let message = "Failed to load app data. Check your connection and RLS policies.";
-        if (error.message.includes("relation") && error.message.includes("does not exist")) {
-            message = `Database table not found: ${error.message}. Please run the setup SQL script from the guide.`;
-        }
-        dispatch({ type: 'SET_ERROR', payload: message });
-    }
-  }, []);
-
-  const setupRealtimeSubscriptions = useCallback((user: User) => {
-    supabase.removeAllChannels();
-
-    const allDbChanges = supabase.channel('all-db-changes');
-    allDbChanges
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        const { table, eventType, new: newRecord, old: oldRecord } = payload;
-        switch (table) {
-            case 'profiles': dispatch({ type: 'UPSERT_USER_PROFILE', payload: newRecord as User }); break;
-            case 'units':
-                if (eventType === 'DELETE') dispatch({ type: 'DELETE_UNIT', payload: { unitId: (oldRecord as any).id } });
-                else dispatch({ type: 'UPSERT_UNIT', payload: newRecord as Unit });
-                break;
-            case 'words': if (eventType === 'UPDATE') dispatch({ type: 'EDIT_WORD_BY_PAYLOAD', payload: newRecord as Word }); break;
-            case 'round_progress':
-                if (eventType === 'DELETE') {
-                    const old = oldRecord as RoundProgress;
-                    dispatch({ type: 'DELETE_ROUND_PROGRESS', payload: { progressId: old.id, studentId: old.student_id, unitId: old.unit_id, roundId: old.round_id } });
-                } else {
-                    dispatch({ type: 'UPSERT_ROUND_PROGRESS', payload: newRecord as RoundProgress });
-                }
-                break;
-            case 'unit_tests':
-                if (eventType === 'DELETE') dispatch({ type: 'DELETE_TEST', payload: { testId: (oldRecord as any).id } });
-                else dispatch({ type: 'UPSERT_UNIT_TEST', payload: newRecord as UnitTest });
-                break;
-            case 'chat_groups':
-                if (eventType === 'DELETE') dispatch({ type: 'DELETE_CHAT_GROUP', payload: { chatGroupId: (oldRecord as any).id } });
-                else dispatch({ type: 'UPSERT_CHAT_GROUP', payload: newRecord as ChatGroup });
-                break;
-            case 'chat_messages':
-                if (eventType === 'DELETE') dispatch({ type: 'DELETE_MESSAGE', payload: { messageId: (oldRecord as any).id } });
-                else dispatch({ type: 'UPSERT_MESSAGE', payload: newRecord as ChatMessage });
-                break;
-        }
-      }).subscribe();
-      
-    const presenceChannel = supabase.channel('online-users', { config: { presence: { key: user.id } } });
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-          const userIds = Object.keys(presenceChannel.presenceState());
-          dispatch({ type: 'SET_ONLINE_USERS', payload: userIds });
-      })
-      .on('presence', { event: 'join' }, ({ key }) => dispatch({ type: 'USER_STATUS_CHANGE', payload: { userId: key, status: 'online' } }))
-      .on('presence', { event: 'leave' }, ({ key }) => {
-          const lastSeen = new Date().toISOString();
-          dispatch({ type: 'USER_STATUS_CHANGE', payload: { userId: key, status: 'offline', lastSeen } });
-          supabase.from('profiles').update({ last_seen: lastSeen }).eq('id', key).then();
-      })
-      .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') await presenceChannel.track({ user_id: user.id, online_at: new Date().toISOString() });
-      });
-
-    const testUpdatesChannel = supabase.channel('test-updates');
-    testUpdatesChannel
-    .on('broadcast', { event: 'submission' }, ({ payload }) => {
-        if (payload?.testId) {
-            supabase.from('unit_tests').select('*').eq('id', payload.testId).single().then(({data}) => {
-                if (data) dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
-            });
-        }
-    })
-    .on('broadcast', { event: 'student_join' }, ({ payload }) => {
-        if (payload?.testId) {
-            supabase.from('unit_tests').select('*').eq('id', payload.testId).single().then(({data}) => {
-                if (data) dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
-            });
-        }
-    })
-    .on('broadcast', { event: 'test_activated' }, ({ payload }) => {
-        if (payload?.testId) {
-            supabase.from('unit_tests').select('*').eq('id', payload.testId).single().then(({data}) => {
-                if (data) dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
-            });
-        }
-    })
-    .subscribe();
-
-    return () => supabase.removeAllChannels();
-  }, [dispatch]);
-
-  // Main effect for auth and connection management
   useEffect(() => {
     if (areSupabaseKeysMissing) {
-      dispatch({ type: 'SET_ERROR', payload: 'Supabase URL or Key is missing. Please check your setup guide.' });
+        dispatch({
+            type: 'SET_ERROR',
+            payload: 'Supabase configuration is missing. Please create a .env file based on .env.example with your project URL and Key. This is required for the app to connect to the database.'
+        });
+        return;
+    }
+
+    dispatch({ type: 'SET_LOADING', payload: true });
+
+    const fetchInitialData = async (user: User) => {
+        try {
+            const [
+              usersRes, unitsRes, progressRes, testsRes, groupsRes
+            ] = await Promise.all([
+                supabase.from('profiles').select('*'),
+                supabase.from('units').select('*, rounds(*, words(*))').order('unit_number', { ascending: true }),
+                supabase.from('round_progress').select('*'),
+                supabase.from('unit_tests').select('*'),
+                supabase.from('chat_groups').select('*'),
+            ]);
+
+            const mainErrors = [usersRes.error, unitsRes.error, progressRes.error, testsRes.error, groupsRes.error].filter(Boolean);
+            if (mainErrors.length > 0) {
+              throw new Error(mainErrors.map(e => e?.message).filter(Boolean).join(', '));
+            }
+
+            let chatMessagesData: ChatMessage[] = [];
+            try {
+                const messagesRes = await supabase.from('chat_messages').select('*');
+                if (messagesRes.error) {
+                    if (messagesRes.error.message.includes('column') && messagesRes.error.message.includes('does not exist')) {
+                         console.warn(`Could not fetch chat messages due to a schema error: ${messagesRes.error.message}. Chat functionality will be limited. Please run the setup scripts from the guide.`);
+                    } else {
+                        throw messagesRes.error;
+                    }
+                } else {
+                    chatMessagesData = messagesRes.data as ChatMessage[] || [];
+                }
+            } catch (chatError: any) {
+                console.error('Non-critical error fetching chat messages:', chatError);
+            }
+            
+            dispatch({
+                type: 'SET_INITIAL_DATA', payload: {
+                    users: usersRes.data as User[] || [],
+                    units: unitsRes.data as Unit[] || [],
+                    chatGroups: groupsRes.data as ChatGroup[] || [],
+                    chatMessages: chatMessagesData,
+                    studentProgress: progressRes.data as RoundProgress[] || [],
+                    unitTests: testsRes.data as UnitTest[] || []
+                }
+            });
+
+        } catch (error: any) {
+            console.error('Failed to fetch initial data:', error);
+            let errorMessage = 'Failed to load app data. Please check your connection.';
+            if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.message.includes('JWT'))) {
+                 errorMessage = `Supabase setup error: ${error.message}. Please check your setup and RLS policies.`;
+            }
+            dispatch({ type: 'SET_ERROR', payload: errorMessage });
+        }
+    };
+    
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session) {
+        if (state.loggedInUser) {
+            try {
+                // Use RPC to update last_seen on logout
+                await supabase.rpc('update_user_last_seen', { user_id: state.loggedInUser.id });
+            } catch (e) {
+                console.error("Failed to update last_seen on logout", e);
+            }
+        }
+        dispatch({ type: 'SET_LOGGED_OUT' });
+        return;
+      }
+
+      try {
+          const { data: userProfiles, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id);
+
+          if (profileError) {
+              throw new Error(`Could not fetch user profile: ${profileError.message}`);
+          }
+          
+          if (!userProfiles || userProfiles.length === 0) {
+              throw new Error('User profile not found for the authenticated user.');
+          }
+          
+          if (userProfiles.length > 1) {
+              console.warn(`Duplicate profiles found for user ${session.user.id}. Using the first one.`);
+          }
+
+          const userProfile = userProfiles[0];
+
+          dispatch({ type: 'LOGIN', payload: userProfile as User });
+          await fetchInitialData(userProfile as User);
+
+      } catch (error: any) {
+          console.error("Critical session error:", error);
+          await supabase.auth.signOut();
+          dispatch({ type: 'SET_ERROR', payload: `A session error occurred: ${error.message}. Please log in again.` });
+      }
+    });
+    
+    return () => {
+        authSubscription?.unsubscribe();
+    };
+  }, []);
+
+  // Simplified and robust real-time connection management.
+  useEffect(() => {
+    if (!state.loggedInUser || areSupabaseKeysMissing) {
+      supabase.removeAllChannels();
       return;
     }
 
-    let initialDataLoadedForSession = false;
+    const user = state.loggedInUser;
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-        // Only run the full login flow on SIGNED_IN or on the first load of a session (INITIAL_SESSION).
-        // Ignore background token refreshes to prevent re-fetching all data.
-        if (session?.user && !initialDataLoadedForSession) {
-            initialDataLoadedForSession = true;
-            
-            const user = session.user;
-            const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-            if (error || !profile) {
-                console.error("Auth listener error: Profile not found or error fetching. Signing out.", error);
-                await supabase.auth.signOut();
-                let errorMessage = `Your user profile could not be loaded. This can happen after a database reset. Please try logging in again. Error: ${error?.message}`;
-                if (error?.message.includes('Database error querying schema')) {
-                    const projectRef = import.meta.env.VITE_SUPABASE_URL?.split('.')[0]?.split('//')[1] || 'UNKNOWN';
-                    errorMessage = `Login successful, but profile loading failed due to a database permission error.\n\n` +
-                                   `**IMPORTANT:** This almost always happens when the setup SQL script is run in the **wrong Supabase project**.\n\n` +
-                                   `Please go to your Supabase SQL Editor and confirm that your project's "Reference ID" is exactly: **${projectRef}**.\n\n` +
-                                   `Then, run the full setup script again using the "Show Setup Guide" button.`;
-                }
-                dispatch({ type: 'SET_ERROR', payload: errorMessage });
-            } else {
-                dispatch({ type: 'LOGIN', payload: profile as User });
-                await fetchInitialData(profile as User);
-            }
-        } else if (event === 'SIGNED_OUT') {
-            dispatch({ type: 'SET_LOGGED_OUT' });
-            initialDataLoadedForSession = false; // Reset for the next login
-        }
+    const allDbChangesChannel = supabase.channel('all-db-changes', {
+      config: {
+        presence: { key: user.id },
+      },
     });
 
-    return () => {
-        authListener.subscription.unsubscribe();
+    allDbChangesChannel
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+          const { table, eventType, new: newRecord, old: oldRecord } = payload;
+          switch (table) {
+              case 'profiles':
+                  dispatch({ type: 'UPSERT_USER_PROFILE', payload: newRecord as User });
+                  break;
+              case 'units':
+                  if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                      dispatch({ type: 'UPSERT_UNIT', payload: newRecord as Unit });
+                  } else if (eventType === 'DELETE') {
+                      dispatch({ type: 'DELETE_UNIT', payload: { unitId: (oldRecord as any).id } });
+                  }
+                  break;
+              case 'round_progress':
+                    if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                      dispatch({ type: 'UPSERT_ROUND_PROGRESS', payload: newRecord as RoundProgress });
+                  } else if (eventType === 'DELETE') {
+                      const old = oldRecord as RoundProgress;
+                      dispatch({ type: 'DELETE_ROUND_PROGRESS', payload: { progressId: old.id, studentId: old.student_id, unitId: old.unit_id, roundId: old.round_id } });
+                  }
+                  break;
+              case 'words':
+                  if (eventType === 'UPDATE') {
+                      const updatedWord = newRecord as Word;
+                      let parentUnitId: string | null = null;
+                      let parentRoundId: string | null = null;
+
+                      // Find the unit and round this word belongs to from the state
+                      for (const unit of state.units) {
+                          for (const round of unit.rounds) {
+                              if (round.words.some(w => w.id === updatedWord.id)) {
+                                  parentUnitId = unit.id;
+                                  parentRoundId = round.id;
+                                  break;
+                              }
+                          }
+                          if (parentUnitId) break;
+                      }
+                      
+                      if (parentUnitId && parentRoundId) {
+                           dispatch({
+                              type: 'EDIT_WORD',
+                              payload: {
+                                  unitId: parentUnitId,
+                                  roundId: parentRoundId,
+                                  wordId: updatedWord.id,
+                                  updatedWord
+                              }
+                          });
+                      }
+                  }
+                  break;
+              case 'unit_tests':
+                  if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                      dispatch({ type: 'UPSERT_UNIT_TEST', payload: newRecord as UnitTest });
+                  } else if (eventType === 'DELETE') {
+                      dispatch({ type: 'DELETE_TEST', payload: { testId: (oldRecord as any).id } });
+                  }
+                  break;
+              case 'chat_groups':
+                    if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                      dispatch({ type: 'UPSERT_CHAT_GROUP', payload: newRecord as ChatGroup });
+                    } else if (eventType === 'DELETE') {
+                      dispatch({ type: 'DELETE_CHAT_GROUP', payload: { chatGroupId: (oldRecord as any).id } });
+                    }
+                  break;
+              case 'chat_messages':
+                  if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                      dispatch({ type: 'UPSERT_MESSAGE', payload: newRecord as ChatMessage });
+                  } else if (eventType === 'DELETE') {
+                      dispatch({ type: 'DELETE_MESSAGE', payload: { messageId: (oldRecord as any).id } });
+                  }
+                  break;
+          }
+      })
+      .on('presence', { event: 'sync' }, () => {
+          const presenceState = allDbChangesChannel.presenceState() || {};
+          const userIds: string[] = [];
+          for (const id in presenceState) {
+              // @ts-ignore
+              const presences = presenceState[id] as { user_id: string }[];
+              presences.forEach(p => userIds.push(p.user_id));
+          }
+          dispatch({ type: 'SET_ONLINE_USERS', payload: [...new Set(userIds)] });
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+          // @ts-ignore
+          const joinedUserId = newPresences[0]?.user_id;
+          if (joinedUserId) dispatch({ type: 'USER_JOINED', payload: joinedUserId });
+      })
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+          // @ts-ignore
+          const leftUserId = leftPresences[0]?.user_id;
+          if (leftUserId) {
+              dispatch({ type: 'USER_LEFT', payload: leftUserId });
+              supabase.rpc('update_user_last_seen', { user_id: leftUserId }).then(({ error }) => {
+                  if (error) console.error(`Failed to update last_seen for user ${leftUserId} via RPC`, error);
+              });
+          }
+      });
+      
+    const testUpdatesChannel = supabase.channel('test-updates');
+    testUpdatesChannel.on('broadcast', { event: 'submission' }, async ({ payload }) => {
+      if (payload && payload.testId) {
+        try {
+          const { data, error } = await supabase.from('unit_tests').select('*').eq('id', payload.testId).single();
+          if (error) throw error;
+          if (data) {
+            dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
+          }
+        } catch (e) {
+          console.error('Failed to refetch test after submission broadcast', e);
+        }
+      }
+    });
+
+    // This handler attempts to re-subscribe to all channels.
+    // It's safe to call multiple times, as the Supabase client handles idempotency.
+    const handleReconnect = () => {
+      allDbChangesChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await allDbChangesChannel.track({ user_id: user.id });
+        }
+      });
+      testUpdatesChannel.subscribe();
     };
-  }, [fetchInitialData]);
-  
-  // Effect to set up subscriptions only when a user logs in
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    if (state.loggedInUser) {
-        cleanup = setupRealtimeSubscriptions(state.loggedInUser);
-    }
-    return () => {
-        if (cleanup) cleanup();
+
+    // Initial subscription
+    handleReconnect(); 
+
+    // Add listeners to handle reconnection automatically after inactivity.
+    const visibilityListener = () => {
+        if (document.visibilityState === 'visible') {
+            handleReconnect();
+        }
     };
-  }, [state.loggedInUser?.id, setupRealtimeSubscriptions]);
+    document.addEventListener('visibilitychange', visibilityListener);
+    window.addEventListener('online', handleReconnect);
+
+    // Cleanup function.
+    return () => {
+      supabase.removeAllChannels();
+      document.removeEventListener('visibilitychange', visibilityListener);
+      window.removeEventListener('online', handleReconnect);
+    };
+  }, [state.loggedInUser, dispatch]);
 
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
 };
 
 export const useApp = () => {
-    const context = useContext(AppContext);
-    if (context === undefined) {
-        throw new Error('useApp must be used within an AppProvider');
-    }
-
-    // Create a "live" version of the loggedInUser by finding the latest
-    // version in the 'users' array, which is updated by realtime events.
-    // This provides components with fresh data without destabilizing the main
-    // loggedInUser object reference, which would cause subscription loops.
-    const liveLoggedInUser = context.state.loggedInUser
-        ? context.state.users.find(u => u.id === context.state.loggedInUser!.id) || context.state.loggedInUser
-        : null;
-
-    return {
-        ...context,
-        state: {
-            ...context.state,
-            loggedInUser: liveLoggedInUser,
-        },
-    };
+  const context = useContext(AppContext);
+  if (context === undefined) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
 };
