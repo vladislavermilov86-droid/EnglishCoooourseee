@@ -69,9 +69,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ? { ...user, avatar_url: action.payload.newAvatarUrl }
             : user
         ),
-        loggedInUser: state.loggedInUser?.id === action.payload.userId
-          ? { ...state.loggedInUser, avatar_url: action.payload.newAvatarUrl }
-          : state.loggedInUser,
+        // loggedInUser is now stable and gets its live updates via the useApp hook
       };
     case 'UPSERT_MESSAGE': {
       const existing = state.chatMessages.find(m => m.id === action.payload.id);
@@ -195,15 +193,18 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, chatGroups: state.chatGroups.filter(g => g.id !== action.payload.chatGroupId) };
     case 'CLEAR_CHAT_HISTORY':
         return { ...state, chatMessages: state.chatMessages.filter(m => m.chat_group_id !== action.payload.chatGroupId) };
-    case 'UPSERT_USER_PROFILE':
+    case 'UPSERT_USER_PROFILE': {
         const user = action.payload;
         const existingUser = state.users.find(u => u.id === user.id);
-        const users = existingUser ? state.users.map(u => u.id === user.id ? user : u) : [...state.users, user];
+        const users = existingUser
+            ? state.users.map(u => u.id === user.id ? { ...u, ...user } : u)
+            : [...state.users, user];
         return {
-          ...state,
-          users,
-          loggedInUser: state.loggedInUser?.id === user.id ? { ...state.loggedInUser, ...user } : state.loggedInUser,
+            ...state,
+            users,
+            // Do not update loggedInUser here to maintain a stable object reference, preventing subscription loops.
         };
+    }
     case 'SET_ONLINE_USERS':
       return { ...state, onlineUserIds: action.payload };
     case 'USER_STATUS_CHANGE': {
@@ -401,9 +402,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 };
 
 export const useApp = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  return context;
+    const context = useContext(AppContext);
+    if (context === undefined) {
+        throw new Error('useApp must be used within an AppProvider');
+    }
+
+    // Create a "live" version of the loggedInUser by finding the latest
+    // version in the 'users' array, which is updated by realtime events.
+    // This provides components with fresh data without destabilizing the main
+    // loggedInUser object reference, which would cause subscription loops.
+    const liveLoggedInUser = context.state.loggedInUser
+        ? context.state.users.find(u => u.id === context.state.loggedInUser!.id) || context.state.loggedInUser
+        : null;
+
+    return {
+        ...context,
+        state: {
+            ...context.state,
+            loggedInUser: liveLoggedInUser,
+        },
+    };
 };
