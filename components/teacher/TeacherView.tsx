@@ -70,6 +70,8 @@ const TeacherView: React.FC = () => {
         } else {
             setManagingTestId(test.id);
         }
+        // When a test is selected, force the view to 'Tests' to highlight it in the sidebar
+        setActiveView('Tests');
     };
 
     if (units.length < 10) {
@@ -102,17 +104,17 @@ const TeacherView: React.FC = () => {
     };
 
     return (
-         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden">
+         <div className="flex h-screen bg-white dark:bg-slate-900 overflow-hidden">
             <Sidebar navItems={navItems} activeView={activeView} setActiveView={handleNav} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
             <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
                 <Header 
                     onChatClick={() => setIsChatOpen(true)} 
                     onProfileClick={() => setIsProfileModalOpen(true)} 
                     onMenuClick={() => setIsSidebarOpen(true)}
-                    activeViewName={activeView}
+                    activeViewName={managingTestId ? 'Test Room' : activeView}
                     chatNotification={hasUnreadMessages}
                 />
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+                <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-gray-50 dark:bg-gray-900">
                     {renderContent()}
                 </main>
             </div>

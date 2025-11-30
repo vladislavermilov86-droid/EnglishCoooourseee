@@ -62,29 +62,36 @@ const StudentView: React.FC = () => {
 
     const handleJoinTest = async (testId: string) => {
         if (!loggedInUser || isJoiningTest) return;
-
+    
         setIsJoiningTest(true);
         try {
-            const { data: test, error } = await supabase.from('unit_tests').select('joined_students').eq('id', testId).single();
-            if (error) throw error;
-            
-            const currentJoined: string[] = test.joined_students || [];
-            
-            if (!currentJoined.includes(loggedInUser.id)) {
-                const newJoined = [...currentJoined, loggedInUser.id];
-                const { error: updateError } = await supabase.from('unit_tests').update({ joined_students: newJoined }).eq('id', testId);
-                if (updateError) throw updateError;
+            // Call the secure RPC function to join the test
+            const { error: rpcError } = await supabase.rpc('join_test', {
+                p_test_id: testId
+            });
+    
+            if (rpcError) {
+                // Check if the error is due to the function not existing
+                if (rpcError.code === '42883') {
+                     alert('A database function is missing. Please run the SQL script from the setup guide to create the "join_test" function.');
+                }
+                throw rpcError;
             }
-            
+    
+            // Send a broadcast event to notify the teacher's client immediately.
+            // This is a good practice for responsive UI, even with Realtime subscriptions in place.
             supabase.channel('app-broadcasts').send({
                 type: 'broadcast',
                 event: 'student_join',
                 payload: { testId },
             });
-
+    
             setJoiningTestId(testId);
         } catch (error) {
             console.error('Error joining test:', error);
+            // Don't set joiningTestId on failure
+        } finally {
+            // Always reset the loading state
             setIsJoiningTest(false);
         }
     };
@@ -106,7 +113,7 @@ const StudentView: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden">
+        <div className="flex h-screen bg-white dark:bg-slate-900 overflow-hidden">
             <Sidebar navItems={navItems} activeView={activeView} setActiveView={handleNav} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
             <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
                 <Header 
@@ -116,7 +123,7 @@ const StudentView: React.FC = () => {
                     activeViewName={activeView}
                     chatNotification={hasUnreadMessages}
                 />
-                <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+                <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto bg-gray-50 dark:bg-gray-900">
                     {renderContent()}
                 </main>
             </div>

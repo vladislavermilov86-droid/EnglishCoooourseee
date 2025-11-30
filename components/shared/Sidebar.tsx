@@ -18,11 +18,15 @@ interface SidebarProps {
 }
 
 const Logo = () => (
-    <div className="flex items-center space-x-2 px-4">
-        <BookOpenIcon className="w-8 h-8 text-yellow-400" />
+    <div className="flex items-center space-x-3 px-2">
+        <div className="p-2 bg-yellow-400/20 rounded-lg">
+            <svg className="w-6 h-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+        </div>
         <div>
-            <span className="text-white text-xl font-bold">EnglishCourse Family</span>
-            <p className="text-xs text-gray-400">English school</p>
+            <span className="text-white text-lg font-bold">EnglishCourse Family</span>
+            <p className="text-xs text-slate-400">English school</p>
         </div>
     </div>
 );
@@ -36,23 +40,23 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, activeView, setActiveView, 
                 onClick={() => setIsOpen(false)}
                 aria-hidden="true"
             ></div>
-            <aside className={`fixed lg:relative inset-y-0 left-0 w-64 bg-gray-800 text-gray-300 flex flex-col p-4 z-40 transform lg:transform-none transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="mb-10">
+            <aside className={`fixed lg:relative inset-y-0 left-0 w-64 bg-slate-900 text-slate-300 flex flex-col p-4 z-40 transform lg:transform-none transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="mb-10 mt-2">
                     <Logo />
                 </div>
                 <nav className="flex-1">
-                    <ul>
+                    <ul className="space-y-2">
                         {navItems.map((item) => (
-                            <li key={item.name} className="mb-2">
+                            <li key={item.name}>
                                 <button
                                     onClick={() => {
                                         setActiveView(item.name);
                                         setIsOpen(false);
                                     }}
-                                    className={`w-full flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 ${
+                                    className={`w-full flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 font-semibold ${
                                         activeView === item.name
-                                            ? 'bg-gray-700 text-white'
-                                            : 'hover:bg-gray-700 hover:text-white'
+                                            ? 'bg-slate-700/50 text-white'
+                                            : 'hover:bg-slate-800 text-slate-400 hover:text-white'
                                     }`}
                                 >
                                     <item.icon className="w-5 h-5 mr-3" />
@@ -68,9 +72,8 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, activeView, setActiveView, 
                 <div>
                     <button 
                         onClick={() => supabase.auth.signOut()}
-                        className="w-full flex items-center py-2.5 px-4 rounded-lg text-red-400 hover:bg-red-500 hover:text-white transition-colors"
+                        className="w-full flex items-center py-2.5 px-4 rounded-lg text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
                     >
-                        {/* FIX: The SVG path was corrupted. It has been replaced with a valid logout icon. */}
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                         <span>Logout</span>
                     </button>
@@ -80,5 +83,4 @@ const Sidebar: React.FC<SidebarProps> = ({ navItems, activeView, setActiveView, 
     );
 };
 
-// FIX: Added a default export to resolve import errors in other components.
 export default Sidebar;

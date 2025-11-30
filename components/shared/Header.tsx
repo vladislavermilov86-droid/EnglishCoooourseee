@@ -15,7 +15,7 @@ const Header: React.FC<HeaderProps> = ({ onChatClick, onProfileClick, onMenuClic
     const { loggedInUser } = state;
 
     return (
-        <header className="bg-white dark:bg-gray-800 shadow-sm p-4 flex justify-between items-center">
+        <header className="bg-white dark:bg-slate-900 p-4 flex justify-between items-center border-b dark:border-slate-800 border-t-4 border-red-500">
             <div className="flex items-center space-x-4">
                  <button 
                     onClick={onMenuClick} 
@@ -34,7 +34,7 @@ const Header: React.FC<HeaderProps> = ({ onChatClick, onProfileClick, onMenuClic
                 >
                     <ChatAltIcon className="w-6 h-6" />
                     {chatNotification && (
-                        <span className="absolute top-1 right-1 block w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
+                        <span className="absolute top-1 right-1 block w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
                     )}
                 </button>
                 <button onClick={onProfileClick} className="flex items-center space-x-2 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
