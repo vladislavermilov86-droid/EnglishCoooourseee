@@ -379,7 +379,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const leftUserId = (leftPresences[0] as any)?.user_id;
           if (leftUserId) {
               dispatch({ type: 'USER_LEFT', payload: leftUserId });
-              const { error } = await supabase.rpc('update_user_last_seen', { user_id: leftUserId });
+              const { error } = await supabase.rpc('update_user_last_seen', { p_user_id: leftUserId });
               if (error) {
                 console.error('Failed to update user last seen:', error);
               }

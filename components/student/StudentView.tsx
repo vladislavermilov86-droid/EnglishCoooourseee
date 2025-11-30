@@ -71,15 +71,18 @@ const StudentView: React.FC = () => {
             });
     
             if (rpcError) {
-                // Check if the error is due to the function not existing
-                if (rpcError.code === '42883') {
-                     alert('A database function is missing. Please run the SQL script from the setup guide to create the "join_test" function.');
+                console.error("RPC Error details:", rpcError);
+                if (rpcError.code === 'PGRST202') {
+                    alert(`Database Cache Error: The database function 'join_test' was not found in the cache. This is a temporary Supabase issue. Please ask your administrator to run the following SQL command in the Supabase SQL Editor to fix it:\n\nNOTIFY pgrst, 'reload schema';`);
+                } else if (rpcError.message.includes("function public.join_test")) {
+                     alert('A database function is missing or inaccessible. Please run the SQL script from the setup guide to create the "join_test" function.');
+                } else {
+                     alert(`An unexpected database error occurred: ${rpcError.message}`);
                 }
                 throw rpcError;
             }
     
             // Send a broadcast event to notify the teacher's client immediately.
-            // This is a good practice for responsive UI, even with Realtime subscriptions in place.
             supabase.channel('app-broadcasts').send({
                 type: 'broadcast',
                 event: 'student_join',
@@ -91,7 +94,6 @@ const StudentView: React.FC = () => {
             console.error('Error joining test:', error);
             // Don't set joiningTestId on failure
         } finally {
-            // Always reset the loading state
             setIsJoiningTest(false);
         }
     };
