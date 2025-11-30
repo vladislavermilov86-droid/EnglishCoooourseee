@@ -61,6 +61,14 @@ const TestsView: React.FC<TestsViewProps> = ({ onSelectTest }) => {
         try {
             const { data: updatedDoc, error } = await supabase.from('unit_tests').update({ status: 'waiting' }).eq('id', test.id).select().single();
             if (error) throw error;
+
+            // Broadcast the update to ensure students' UI updates in real-time
+            supabase.channel('test-updates').send({
+                type: 'broadcast',
+                event: 'test_activated',
+                payload: { testId: test.id },
+            });
+
             onSelectTest(updatedDoc as UnitTest);
         } catch(error) {
             // Revert on failure
