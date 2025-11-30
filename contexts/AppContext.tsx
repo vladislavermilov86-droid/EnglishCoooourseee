@@ -322,13 +322,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
 
     const testUpdatesChannel = supabase.channel('test-updates');
-    testUpdatesChannel.on('broadcast', { event: 'submission' }, ({ payload }) => {
+    testUpdatesChannel
+    .on('broadcast', { event: 'submission' }, ({ payload }) => {
         if (payload?.testId) {
             supabase.from('unit_tests').select('*').eq('id', payload.testId).single().then(({data}) => {
                 if (data) dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
             });
         }
-    }).subscribe();
+    })
+    .on('broadcast', { event: 'student_join' }, ({ payload }) => {
+        if (payload?.testId) {
+            supabase.from('unit_tests').select('*').eq('id', payload.testId).single().then(({data}) => {
+                if (data) dispatch({ type: 'UPSERT_UNIT_TEST', payload: data as UnitTest });
+            });
+        }
+    })
+    .subscribe();
 
     return () => supabase.removeAllChannels();
   }, [dispatch]);
