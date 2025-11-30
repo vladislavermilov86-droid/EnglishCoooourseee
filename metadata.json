@@ -1,0 +1,5 @@
+{
+  "name": "EnglishCourse",
+  "description": "An interactive platform for students to learn English vocabulary through units and rounds, with teacher oversight, grading, and real-time testing capabilities.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,37 @@
+{
+  "name": "english-course-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An interactive platform for learning English.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config ./vite.config.ts",
+    "build": "tsc && vite build --config ./vite.config.ts",
+    "preview": "vite preview",
+    "sync:android": "npx cap sync android",
+    "build:android:debug": "npm run build && npm run sync:android && (cd android && gradlew.bat assembleDebug)",
+    "build:android:release": "npm run build && npm run sync:android && (cd android && gradlew.bat assembleRelease)",
+    "build:android:bundle": "npm run build && npm run sync:android && (cd android && gradlew.bat bundleRelease)",
+    "assets:generate": "npx capacitor-assets generate"
+  },
+  "dependencies": {
+    "@capacitor-community/text-to-speech": "^6.1.0",
+    "@capacitor/core": "^7.4.4",
+    "@supabase/supabase-js": "^2.43.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.4.4",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "index.tsx",
+    "App.tsx",
+    "types.ts",
+    "supabase.ts",
+    "components/**/*.tsx",
+    "contexts/**/*.tsx",
+    "vite-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules", 
+    "server",
+    "tailwind.config.js",
+    "postcss.config.js"
+  ]
+}
