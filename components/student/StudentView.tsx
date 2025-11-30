@@ -76,6 +76,12 @@ const StudentView: React.FC = () => {
                 if (updateError) throw updateError;
             }
             
+            supabase.channel('app-broadcasts').send({
+                type: 'broadcast',
+                event: 'student_join',
+                payload: { testId },
+            });
+
             setJoiningTestId(testId);
         } catch (error) {
             console.error('Error joining test:', error);
