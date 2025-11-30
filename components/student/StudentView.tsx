@@ -74,13 +74,6 @@ const StudentView: React.FC = () => {
                 const newJoined = [...currentJoined, loggedInUser.id];
                 const { error: updateError } = await supabase.from('unit_tests').update({ joined_students: newJoined }).eq('id', testId);
                 if (updateError) throw updateError;
-                
-                // Broadcast the update to ensure teacher's UI updates in real-time
-                supabase.channel('test-updates').send({
-                    type: 'broadcast',
-                    event: 'student_join',
-                    payload: { testId },
-                });
             }
             
             setJoiningTestId(testId);

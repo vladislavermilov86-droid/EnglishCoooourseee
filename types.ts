@@ -168,7 +168,6 @@ export type Action =
   | { type: 'UPSERT_UNIT'; payload: Unit }
   | { type: 'DELETE_UNIT'; payload: { unitId: string } }
   | { type: 'EDIT_WORD'; payload: { unitId: string; roundId: string; wordId: string; updatedWord: Word } }
-  | { type: 'EDIT_WORD_BY_PAYLOAD'; payload: Word }
   | { type: 'UPSERT_UNIT_TEST'; payload: UnitTest }
   | { type: 'DELETE_TEST'; payload: { testId: string } }
   | { type: 'UNLOCK_UNIT'; payload: { unitId: string } }

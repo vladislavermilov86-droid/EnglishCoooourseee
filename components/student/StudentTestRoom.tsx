@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { TestQuestion, UnitTest, StudentTestResult } from '../../types';
+import { EyeIcon, EyeOffIcon } from '../icons/Icons';
 import { supabase } from '../../supabase';
 
 interface StudentTestRoomProps {
@@ -55,6 +56,7 @@ const StudentTestRoom: React.FC<StudentTestRoomProps> = ({ testId, onExit }) => 
     const [userAnswers, setUserAnswers] = useState<string[]>([]);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     
     const handleSubmit = useCallback(async () => {
         if (!test || !questions || !loggedInUser || isSubmitted) return;
@@ -166,12 +168,14 @@ const StudentTestRoom: React.FC<StudentTestRoomProps> = ({ testId, onExit }) => 
     const goToNext = () => {
         if (test && questions && currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
+            setIsPasswordVisible(false);
         }
     };
     
     const goToPrev = () => {
         if (currentQuestionIndex > 0) {
             setCurrentQuestionIndex(prev => prev - 1);
+            setIsPasswordVisible(false);
         }
     };
 
@@ -222,17 +226,25 @@ const StudentTestRoom: React.FC<StudentTestRoomProps> = ({ testId, onExit }) => 
                             <p className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">{currentQuestion.word.russian}</p>
                             <div className="relative w-full max-w-sm mx-auto">
                                 <input
-                                    type="text"
+                                    type={isPasswordVisible ? 'text' : 'password'}
                                     value={userAnswers[currentQuestionIndex] || ''}
                                     onChange={(e) => handleAnswerChange(e.target.value)}
                                     onPaste={(e) => e.preventDefault()}
                                     autoCapitalize="none"
-                                    autoComplete="one-time-code"
+                                    autoComplete="off"
                                     autoCorrect="off"
                                     spellCheck="false"
-                                    className="w-full text-center text-2xl tracking-wider border-b-2 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:border-yellow-400 p-2 rounded-t-lg dark:text-gray-200 dark:border-gray-600 dark:focus:border-yellow-500"
+                                    className="w-full text-center text-2xl tracking-wider border-b-2 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:border-yellow-400 p-2 rounded-t-lg dark:text-gray-200 dark:border-gray-600 dark:focus:border-yellow-500 pr-10"
                                     placeholder="Type here..."
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPasswordVisible(!isPasswordVisible)}
+                                    className="absolute top-1/2 right-2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                    aria-label={isPasswordVisible ? "Hide word" : "Show word"}
+                                >
+                                    {isPasswordVisible ? <EyeOffIcon className="w-6 h-6" /> : <EyeIcon className="w-6 h-6" />}
+                                </button>
                             </div>
                         </div>
                     </div>
