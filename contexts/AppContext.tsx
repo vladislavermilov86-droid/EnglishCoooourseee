@@ -357,8 +357,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
+    let initialDataLoadedForSession = false;
+
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (session?.user) {
+        // Only run the full login flow on SIGNED_IN or on the first load of a session (INITIAL_SESSION).
+        // Ignore background token refreshes to prevent re-fetching all data.
+        if (session?.user && !initialDataLoadedForSession) {
+            initialDataLoadedForSession = true;
+            
             const user = session.user;
             const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
             if (error || !profile) {
@@ -377,8 +383,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 dispatch({ type: 'LOGIN', payload: profile as User });
                 await fetchInitialData(profile as User);
             }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
             dispatch({ type: 'SET_LOGGED_OUT' });
+            initialDataLoadedForSession = false; // Reset for the next login
         }
     });
 
