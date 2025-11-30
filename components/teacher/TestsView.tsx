@@ -26,18 +26,21 @@ const TestsView: React.FC<TestsViewProps> = ({ onSelectTest }) => {
         setCreatingTestUnitId(unitId);
 
         try {
-            // By sending only the required fields, we let the database handle defaults
-            // for nullable columns (like joined_students, questions, etc.), which is more robust.
             const newTestPayload = {
                 unit_id: unit.id,
                 title: `${unit.title} Test`,
                 status: 'waiting' as const,
             };
             
-            const { error } = await supabase.from('unit_tests').insert([newTestPayload]);
-            if (error) throw error;
+            const { data: newTest, error } = await supabase.from('unit_tests').insert([newTestPayload]).select().single();
 
-            // Success is handled by the realtime subscription.
+            if (error) throw error;
+            if (!newTest) throw new Error("Test creation did not return the new record.");
+
+            // Manually dispatch to update UI immediately, rather than waiting for realtime.
+            // The realtime listener will also fire, but the reducer handles upserts gracefully.
+            dispatch({ type: 'UPSERT_UNIT_TEST', payload: newTest as UnitTest });
+
         } catch(error: any) {
             console.error('Error creating test:', error);
             let message = 'Failed to create test. Please check your Supabase RLS policies and that the unit_id is unique.';
@@ -209,5 +212,4 @@ const TestsView: React.FC<TestsViewProps> = ({ onSelectTest }) => {
     );
 };
 
-// FIX: Add default export to resolve module import error.
 export default TestsView;

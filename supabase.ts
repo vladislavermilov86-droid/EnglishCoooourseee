@@ -9,7 +9,7 @@ export const areSupabaseKeysMissing = !supabaseUrl || !supabaseAnonKey;
 // This stops the app from crashing on import.
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
-    storage: localStorage, // Persist session across browser windows/tabs
+    storage: sessionStorage, // Persist session only in the current tab/window
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,

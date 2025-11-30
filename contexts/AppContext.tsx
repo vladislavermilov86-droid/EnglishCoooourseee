@@ -341,8 +341,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-        const user = session?.user;
-        if (user) {
+        if (session?.user) {
+            const user = session.user;
             const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
             if (error || !profile) {
                 console.error("Auth listener error: Profile not found or error fetching. Signing out.", error);
@@ -365,32 +365,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     });
 
-    const handleReconnect = async () => {
-        if (document.visibilityState === 'visible' && navigator.onLine) {
-            const { data: { session }, error } = await supabase.auth.refreshSession();
-            if (error) {
-                console.error("Failed to refresh session on reconnect:", error.message);
-                if (error.message.includes("Invalid refresh token")) {
-                    await supabase.auth.signOut();
-                    dispatch({ type: 'SET_ERROR', payload: 'Your session has expired. Please log in again.' });
-                }
-            } else if (session && state.loggedInUser) {
-                console.log("Session refreshed, rebuilding subscriptions.");
-                setupRealtimeSubscriptions(state.loggedInUser);
-            }
-        }
-    };
-
-    document.addEventListener('visibilitychange', handleReconnect);
-    window.addEventListener('online', handleReconnect);
-
     return () => {
         authListener.subscription.unsubscribe();
-        document.removeEventListener('visibilitychange', handleReconnect);
-        window.removeEventListener('online', handleReconnect);
-        supabase.removeAllChannels();
     };
-  }, [fetchInitialData, setupRealtimeSubscriptions, state.loggedInUser?.id]);
+  }, [fetchInitialData]);
   
   // Effect to set up subscriptions only when a user logs in
   useEffect(() => {
