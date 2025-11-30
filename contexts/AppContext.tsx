@@ -368,7 +368,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         window.removeEventListener('online', handleReconnect);
         supabase.removeAllChannels();
     };
-  }, [fetchInitialData, setupRealtimeSubscriptions, state.loggedInUser]);
+  }, [fetchInitialData, setupRealtimeSubscriptions, state.loggedInUser?.id]);
   
   // Effect to set up subscriptions only when a user logs in
   useEffect(() => {
@@ -379,7 +379,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => {
         if (cleanup) cleanup();
     };
-  }, [state.loggedInUser, setupRealtimeSubscriptions]);
+  }, [state.loggedInUser?.id, setupRealtimeSubscriptions]);
 
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
 };
