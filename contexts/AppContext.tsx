@@ -180,7 +180,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return {
           ...state,
           users,
-          loggedInUser: state.loggedInUser?.id === user.id ? user : state.loggedInUser,
+          loggedInUser: state.loggedInUser?.id === user.id ? { ...state.loggedInUser, ...user } : state.loggedInUser,
         };
     case 'SET_ONLINE_USERS':
       return { ...state, onlineUserIds: action.payload };
