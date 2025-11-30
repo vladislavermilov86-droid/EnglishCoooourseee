@@ -243,6 +243,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'INITIAL_SESSION' && !session) {
+            dispatch({ type: 'SET_LOGGED_OUT' });
+            return;
+        }
+
         if (event === 'INITIAL_SESSION' && session) {
             if (isFetchingRef.current) return;
             isFetchingRef.current = true;
